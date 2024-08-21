@@ -16,7 +16,7 @@ In each folder you can find a more in-depth explanation of each component:
 Take a look at the components diagram that describes them and their interactions.
 ![microservice-app-example](/arch-img/Microservices.png)
 
-#Paso a paso para el despliegue estrategia uso de Docker compose
+# Paso a paso para el despliegue estrategia uso de Docker compose
 
 1. Hacer fork al repositorio original
 2. Clonar el repositorio
