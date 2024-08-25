@@ -29,6 +29,7 @@ git clone <url_del_repositorio>
 ### 3. Comprender el orden y las relaciones entre los microservicios
 Familiarízate con la arquitectura general y el flujo de datos entre los microservicios.
 
+![Diagrama](/arch-img/MyApp.drawio.png)
 ### 4. Crear los archivos Dockerfile para cada microservicio
 Es necesario crear un archivo `Dockerfile` en cada uno de los directorios de los microservicios. Cada archivo debe contener las instrucciones específicas para construir la imagen Docker del servicio correspondiente.
 
