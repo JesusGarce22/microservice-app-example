@@ -1,91 +1,103 @@
 version: '3.8'
 
+# Define los servicios que se ejecutarán como contenedores.
 services:
-  redis:
-    image: redis:7.0
-    ports:
-      - "6379:6379"
 
+  # Servicio Redis, utilizado como una cola de mensajes por otros microservicios.
+  redis:
+    image: redis:7.0  # Especifica la imagen de Redis en la versión 7.0.
+    ports:
+      - "6379:6379"  # El puerto 6379 se mapea en el contenedor y en el host.
+
+  # Servicio Users API, un microservicio que maneja perfiles de usuarios.
   users-api:
     build:
-      context: ./users-api
+      context: ./users-api  # Carpeta donde está ubicado el código del servicio.
     ports:
-      - "8083:8083"
+      - "8083:8083"  # Expone el puerto 8083.
     environment:
-      - JWT_SECRET=PRFT
-      - SERVER_PORT=8083
+      - JWT_SECRET=PRFT  # Define la variable de entorno para el JWT secreto.
+      - SERVER_PORT=8083  # Define el puerto en el que escucha el servicio.
 
+  # Servicio Auth API, microservicio de autorización que genera tokens JWT.
   auth-api:
     build:
-      context: ./auth-api
+      context: ./auth-api  # Carpeta donde está ubicado el código del servicio.
     ports:
-      - "8000:8000"
+      - "8000:8000"  # Expone el puerto 8000.
     environment:
-      - JWT_SECRET=PRFT
-      - AUTH_API_PORT=8000
-      - USERS_API_ADDRESS=http://users-api:8083
+      - JWT_SECRET=PRFT  # JWT secreto para firmar los tokens.
+      - AUTH_API_PORT=8000  # Puerto en el que escucha el servicio.
+      - USERS_API_ADDRESS=http://users-api:8083  # Dirección de la API de usuarios para integración.
 
+  # Servicio Log Message Processor, microservicio que procesa los mensajes de la cola Redis.
   log-message-processor:
     build:
-      context: ./log-message-processor
+      context: ./log-message-processor  # Carpeta donde está el código del servicio.
     environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_CHANNEL=log_channel
+      - REDIS_HOST=redis  # Define el host de Redis al cual conectarse.
+      - REDIS_PORT=6379  # Puerto de Redis.
+      - REDIS_CHANNEL=log_channel  # Canal de Redis donde escucha los mensajes.
     depends_on:
-      - redis
+      - redis  # Indica que este servicio depende de Redis, lo que garantiza que Redis se inicie primero.
 
+  # Servicio Todos API, microservicio que maneja tareas (TODO) y registra las operaciones en Redis.
   todos-api:
     build:
-      context: ./todos-api
+      context: ./todos-api  # Carpeta donde está el código del servicio.
     ports:
-      - "8082:8082"
+      - "8082:8082"  # Expone el puerto 8082.
     environment:
-      - JWT_SECRET=PRFT
-      - TODO_API_PORT=8082
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_CHANNEL=log_channel
+      - JWT_SECRET=PRFT  # JWT secreto.
+      - TODO_API_PORT=8082  # Puerto en el que escucha el servicio.
+      - REDIS_HOST=redis  # Host de Redis al cual conectarse.
+      - REDIS_PORT=6379  # Puerto de Redis.
+      - REDIS_CHANNEL=log_channel  # Canal de Redis para registrar eventos.
     depends_on:
-      - redis
+      - redis  # El servicio depende de Redis.
 
+  # Servicio Frontend, una aplicación Vue que actúa como interfaz de usuario.
   frontend:
     build:
-      context: ./frontend
+      context: ./frontend  # Carpeta donde está ubicado el código del frontend.
     ports:
-      - "8080:8080"
+      - "8080:8080"  # Expone el puerto 8080.
     environment:
-      - PORT=8080
-      - AUTH_API_ADDRESS=http://auth-api:8000
-      - TODOS_API_ADDRESS=http://todos-api:8082
+      - PORT=8080  # Puerto en el que se ejecuta el frontend.
+      - AUTH_API_ADDRESS=http://auth-api:8000  # Dirección del servicio de autenticación.
+      - TODOS_API_ADDRESS=http://todos-api:8082  # Dirección del servicio de TODOs.
 
+  # Servicio cAdvisor, utilizado para monitorear los contenedores y sus métricas.
   cadvisor:
-    image: google/cadvisor:latest
+    image: google/cadvisor:latest  # Imagen de cAdvisor más reciente.
     volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
+      - /:/rootfs:ro  # Monta el sistema de archivos raíz en modo de solo lectura.
+      - /var/run:/var/run:ro  # Monta la carpeta var/run en modo de solo lectura.
+      - /sys:/sys:ro  # Monta el sistema de archivos del sistema.
+      - /var/lib/docker/:/var/lib/docker:ro  # Monta la carpeta de datos de Docker.
     ports:
-      - "8081:8080"
+      - "8081:8080"  # El servicio cAdvisor se expone en el puerto 8081 del host, mapeado al 8080 del contenedor.
 
+  # Servicio Prometheus, utilizado para la recolección de métricas.
   prometheus:
-    image: prom/prometheus
+    image: prom/prometheus  # Imagen oficial de Prometheus.
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml  # Archivo de configuración de Prometheus.
     command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--config.file=/etc/prometheus/prometheus.yml"  # Comando para especificar el archivo de configuración.
     ports:
-      - "9090:9090"
+      - "9090:9090"  # Prometheus escucha en el puerto 9090.
 
+  # Servicio Grafana, plataforma de visualización de métricas.
   grafana:
-    image: grafana/grafana
+    image: grafana/grafana  # Imagen oficial de Grafana.
     ports:
-      - "3000:3000"
+      - "3000:3000"  # El servicio se expone en el puerto 3000.
     volumes:
-      - grafana-storage:/var/lib/grafana
+      - grafana-storage:/var/lib/grafana  # Se monta el volumen persistente para los datos de Grafana.
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin  # Contraseña de administrador por defecto.
 
+# Define volúmenes persistentes para almacenar datos, como los datos de Grafana.
 volumes:
   grafana-storage:
