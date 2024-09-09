@@ -1,5 +1,7 @@
 Vagrant.configure("2") do |config|
 
+    config.vm.boot_timeout = 900
+
     # Configuración para Redis
     config.vm.define "redis" do |redis|
       redis.vm.box = "ubuntu/focal64"
