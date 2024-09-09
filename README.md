@@ -1,129 +1,193 @@
-# Aplicación de Microservicios - PRFT DevOps Training
+## Paso a Paso para Desplegar con Vagrant y Virtualbox
 
-Esta es la aplicación que usarás durante todo el entrenamiento. Esto, con suerte, te enseñará los fundamentos que necesitas para trabajar en un proyecto real. Encontrarás una aplicación básica de tareas pendientes (TODO) diseñada con una [arquitectura de microservicios](https://microservices.io). Aunque es una aplicación de tareas, es interesante porque los microservicios que la componen están escritos en diferentes lenguajes de programación o frameworks (Go, Python, Vue, Java y NodeJS). Con este diseño experimentarás con múltiples herramientas de construcción y entornos.
+En esta rama vamos a desplegar el mismo proyecto, pero usando Vagrant y Virtualbox. La estrategia que se va usar es la siguiente: 
 
-## Componentes
-En cada carpeta puedes encontrar una explicación más detallada de cada componente:
+- Cada servicio se ejecuta en una VM separada con una dirección IP privada única.
+- Para cada VM, se instala Docker y se ejecuta el contenedor correspondiente utilizando la imagen de Docker Hub.
+- Se especifica la memoria asignada a cada VM, se debe contar con almenos 15G de almacenamiento disponible.
+- Todas las VMs están en la misma red privada, lo que permite la comunicación entre los microservicios.
 
-1. [API de Usuarios](/users-api): Es una aplicación de Spring Boot. Proporciona perfiles de usuario. Por el momento, no ofrece CRUD completo, solo permite obtener un solo usuario y todos los usuarios.
-2. [API de Autenticación](/auth-api): Es una aplicación en Go, que proporciona funcionalidad de autenticación. Genera tokens [JWT](https://jwt.io/) que se utilizan en las otras APIs.
-3. [API de TODOs](/todos-api): Es una aplicación en NodeJS que proporciona funcionalidad CRUD sobre los registros de tareas pendientes (TODO) de los usuarios. Además, registra las operaciones de "crear" y "eliminar" en una cola de [Redis](https://redis.io/).
-4. [Procesador de Mensajes de Registro](/log-message-processor): Es un procesador de colas escrito en Python. Su propósito es leer mensajes de una cola de Redis y mostrarlos en la salida estándar.
-5. [Frontend](/frontend): Es una aplicación en Vue que proporciona la interfaz de usuario (UI).
-
-## Arquitectura
-
-A continuación se muestra el diagrama de componentes que describe cada uno de ellos y sus interacciones.
-![microservice-app-example](/arch-img/Microservices.png)
-
-## Paso a Paso para Desplegar y Monitorear con Docker Compose, Prometheus, Grafana y cAdvisor
-
-### 1. Hacer fork al repositorio original
-Haz un fork del repositorio a tu cuenta de GitHub para trabajar con tu propia copia del código.
-
-### 2. Clonar el repositorio
-Clona el repositorio localmente usando el comando:
+### 1. Crear el archivo Vagrantfile
 ```
-git clone <url_del_repositorio>
+Vagrant.configure("2") do |config|
+
+    config.vm.boot_timeout = 900
+
+    # Configuración para Redis
+    config.vm.define "redis" do |redis|
+      redis.vm.box = "ubuntu/focal64"
+      redis.vm.network "private_network", ip: "192.168.56.10"
+      redis.vm.provider "virtualbox" do |vb|
+        vb.memory = "2048"
+      end
+      redis.vm.provision "docker" do |d|
+        d.run "redis", image: "redis:7.0", args: "-p 6379:6379"
+      end
+    end
+  
+    # Configuración para Users API
+    config.vm.define "users-api" do |users_api|
+      users_api.vm.box = "ubuntu/focal64"
+      users_api.vm.network "private_network", ip: "192.168.56.11"
+      users_api.vm.provider "virtualbox" do |vb|
+        vb.memory = "2048"
+      end
+      users_api.vm.provision "docker" do |d|
+        d.run "users-api", image: "jesusgarces22/users-api:latest", args: "-p 8083:8083", env: {
+          "JWT_SECRET" => "PRFT",
+          "SERVER_PORT" => "8083"
+        }
+      end
+    end
+  
+    # Configuración para Auth API
+    config.vm.define "auth-api" do |auth_api|
+      auth_api.vm.box = "ubuntu/focal64"
+      auth_api.vm.network "private_network", ip: "192.168.56.12"
+      auth_api.vm.provider "virtualbox" do |vb|
+        vb.memory = "2048"
+      end
+      auth_api.vm.provision "docker" do |d|
+        d.run "auth-api", image: "jesusgarces22/auth-api:latest", args: "-p 8000:8000", env: {
+          "JWT_SECRET" => "PRFT",
+          "AUTH_API_PORT" => "8000",
+          "USERS_API_ADDRESS" => "http://192.168.56.11:8083"
+        }
+      end
+    end
+  
+    # Configuración para Log Message Processor
+    config.vm.define "log-message-processor" do |log_processor|
+      log_processor.vm.box = "ubuntu/focal64"
+      log_processor.vm.network "private_network", ip: "192.168.56.13"
+      log_processor.vm.provider "virtualbox" do |vb|
+        vb.memory = "2048"
+      end
+      log_processor.vm.provision "docker" do |d|
+        d.run "log-message-processor", image: "jesusgarces22/log-message-processor:latest", env: {
+          "REDIS_HOST" => "192.168.56.10",
+          "REDIS_PORT" => "6379",
+          "REDIS_CHANNEL" => "log_channel"
+        }
+      end
+    end
+  
+    # Configuración para Todos API
+    config.vm.define "todos-api" do |todos_api|
+      todos_api.vm.box = "ubuntu/focal64"
+      todos_api.vm.network "private_network", ip: "192.168.56.14"
+      todos_api.vm.provider "virtualbox" do |vb|
+        vb.memory = "2048"
+      end
+      todos_api.vm.provision "docker" do |d|
+        d.run "todos-api", image: "jesusgarces22/todos-api:latest", args: "-p 8082:8082", env: {
+          "JWT_SECRET" => "PRFT",
+          "TODO_API_PORT" => "8082",
+          "REDIS_HOST" => "192.168.56.10",
+          "REDIS_PORT" => "6379",
+          "REDIS_CHANNEL" => "log_channel"
+        }
+      end
+    end
+  
+    # Configuración para Frontend
+    config.vm.define "frontend" do |frontend|
+      frontend.vm.box = "ubuntu/focal64"
+      frontend.vm.network "private_network", ip: "192.168.56.15"
+      frontend.vm.provider "virtualbox" do |vb|
+        vb.memory = "2048"
+      end
+      frontend.vm.provision "docker" do |d|
+        d.run "frontend", image: "jesusgarces22/frontend:latest", args: "-p 8080:8080", env: {
+          "PORT" => "8080",
+          "AUTH_API_ADDRESS" => "http://192.168.56.12:8000",
+          "TODOS_API_ADDRESS" => "http://192.168.56.14:8082"
+        }
+      end
+    end
+  
+    # Configuración para cAdvisor
+    config.vm.define "cadvisor" do |cadvisor|
+      cadvisor.vm.box = "ubuntu/focal64"
+      cadvisor.vm.network "private_network", ip: "192.168.56.16"
+      cadvisor.vm.provider "virtualbox" do |vb|
+        vb.memory = "1024"
+      end
+      cadvisor.vm.provision "docker" do |d|
+        d.run "cadvisor", image: "google/cadvisor:latest", args: "-p 8081:8080 -v /:/rootfs:ro -v /var/run:/var/run:ro -v /sys:/sys:ro -v /var/lib/docker/:/var/lib/docker:ro"
+      end
+    end
+  
+    # Configuración para Prometheus
+    config.vm.define "prometheus" do |prometheus|
+      prometheus.vm.box = "ubuntu/focal64"
+      prometheus.vm.network "private_network", ip: "192.168.56.17"
+      prometheus.vm.provider "virtualbox" do |vb|
+        vb.memory = "1024"
+      end
+      prometheus.vm.provision "docker" do |d|
+        d.run "prometheus", image: "prom/prometheus", args: "-p 9090:9090 -v /vagrant/prometheus.yml:/etc/prometheus/prometheus.yml"
+      end
+    end
+  
+    # Configuración para Grafana
+    config.vm.define "grafana" do |grafana|
+      grafana.vm.box = "ubuntu/focal64"
+      grafana.vm.network "private_network", ip: "192.168.56.18"
+      grafana.vm.provider "virtualbox" do |vb|
+        vb.memory = "1024"
+      end
+      grafana.vm.provision "docker" do |d|
+        d.run "grafana", image: "grafana/grafana", args: "-p 3000:3000 -v grafana-storage:/var/lib/grafana", env: {
+          "GF_SECURITY_ADMIN_PASSWORD" => "admin"
+        }
+      end
+    end
+  
+  end
 ```
-### 3. Comprender el orden y las relaciones entre los microservicios
-Familiarízate con la arquitectura general y el flujo de datos entre los microservicios.
-
-![Diagrama](/arch-img/MyApp.drawio.png)
-### 4. Crear los archivos Dockerfile para cada microservicio
-Es necesario crear un archivo `Dockerfile` en cada uno de los directorios de los microservicios. Cada archivo debe contener las instrucciones específicas para construir la imagen Docker del servicio correspondiente.
-
-### 5. Crear un archivo Docker Compose
-Crea un archivo [docker-compose.yml](docker-compose.yml) con las configuraciones e instrucciones para orquestar el despliegue de todos los microservicios. Asegúrate de incluir las dependencias y la configuración de redes necesarias.
-
-### 6. Desplegar con Docker Compose
-Una vez que todo esté configurado, ejecuta el siguiente comando para desplegar los servicios en contenedores:
+### 2.  Iniciar el Despliegue con Vagrant
 ```
-docker-compose up -d
+vagrant up
+
+#Tambien puedes usar 
+
+vangrant up nombre_de_la_VM
 ```
+![](/arch-img/logVangrantusers.PNG)
+Esto puede tardar mas de 30 minutos.
 
-Ingresar a [localhost:8080](http//:localhost:8080) para ver la pagina principal del fronted
-
-![](/arch-img/Todos-app.png)
-
-### 7. Subir imágenes a DockerHub
-Sube las imágenes de los microservicios a tu cuenta de DockerHub para facilitar el despliegue en otros entornos. Use los siguientes comandos.
-
-```bash
-docker login
-docker build -t <DockerHubUsername>/nombre-de-imagen:latest ./ubicacion
-docker push <DockerHubUsername>/<nombre-de-imagen>:<tag>
-
-#Ejemplo
-
-docker build -t jesusgarces22/users-api:latest ./users-api
-docker push jesusgarces22/users-api:latest
-
+### 3. Verificar el Estado de las VMs
+Una vez completado el comando anterior, se puede verificar que todas las VMs estén en funcionamiento con:
 ```
+vagrant status
+```
+![](/arch-img/running.PNG)
+### 4. Acceder a los Servicios
+Cada microservicio se ejecutará en una dirección IP privada en la red local:
 
-![](/arch-img/imgsDH.png)
+* Redis: ```192.168.56.10:6379```
+* Users API: ```192.168.56.11:8083```
+* Auth API: ```192.168.56.12:8000```
+* Log Message Processor: ```192.168.56.13```
+* Todos API: ```192.168.56.14:8082```
+* Frontend: ```192.168.56.15:8080```
+* cAdvisor: ```192.168.56.16:8081```
+* Prometheus: ```192.168.56.17:9090```
+* Grafana: ```192.168.56.18:3000```
 
-### 8. Configurar Prometheus, Grafana y cAdvisor
-Añade las configuraciones necesarias para monitorear los contenedores usando Prometheus, Grafana y cAdvisor modificando el [docker-compose.yml](docker-compose.yml). Define un [archivo de configuración para Prometheus](prometheus.yml) y asegúrate de que todos los endpoints de métricas estén accesibles.
-
-### 9. Desplegar el sistema de monitoreo
-Inicia Prometheus, Grafana y cAdvisor como servicios en contenedores usando Docker Compose.
+### 5. Apagar las VMs
 
 ```
-docker-compose up -d
+vagrant halt
 ```
-![](/arch-img/servicios_run.png)
-![](/arch-img/contenedores%20en%20docker.png)
 
-### 10. Iniciar sesión en Grafana
-Accede a Grafana en el puerto configurado (por defecto http://localhost:3000), inicia sesión usando las credenciales predeterminadas (usuario: admin, contraseña: admin).
+### 6. Detruir las VMs
 
-NOTA:  este flujo:
+```
+vagrant destroy -f
+```
 
-**cAdvisor** es el encargado de recolectar métricas sobre el rendimiento de los contenedores, como el uso de CPU, memoria, disco, y red. Este servicio expone las métricas en un formato que Prometheus puede entender a través de un endpoint HTTP (normalmente /metrics).
-
-**Prometheus** es quien recoge y almacena las métricas de cAdvisor y otros servicios que estén exponiendo datos. Prometheus accede periódicamente al endpoint de cAdvisor (y otros servicios si están configurados) para extraer las métricas.
-
-**Grafana** es la herramienta que visualiza las métricas almacenadas en Prometheus. Mediante consultas (queries) a la base de datos de Prometheus, Grafana genera gráficos y paneles de control (dashboards) para presentar las métricas de manera visual e interpretable.
-- Primero, consulte las interfaces de Prometheus http://localhost:9090 y cAdvisor http://localhost:8081
-
-![](/arch-img/prometheus-tarjet.png)
-
-En esta imagen se pueden ver los contenedores que esta monitoreando prometheus
-
-![](/arch-img/Cardvisor.png)
-
-Aqui se puede ver los contenedores de Docker que esta monitoreando cadvisor mostrando su id
-
-Algunas metricas que se pueden ver en Cadvisor:
-
-![](/arch-img/Cardbana.png)
-
-![](/arch-img/grafica_cardvana.png)
-
-### 11. Crear un nuevo Data Source en Grafana
-Dentro de Grafana, configura Prometheus como fuente de datos (Data Source) apuntando a la URL correcta (por ejemplo, http://prometheus:9090).
-
-![](/arch-img/datasourc.png)
-
-### 12. Construir un Dashboard en Grafana
-Crea un nuevo Dashboard en Grafana donde podrás visualizar gráficas basadas en las métricas proporcionadas por Prometheus.
-
-![](/arch-img/Dashbopard.png)
-
-### 13. Configurar las métricas que se desean monitorear
-Configura las queries necesarias para monitorear las métricas importantes. Puedes monitorear el uso de CPU, memoria, tráfico de red, y actividad de los microservicios. Algunos ejemplos acontinuacion:
-
-![](/arch-img/Query.png)
-
-![](/arch-img/memory-grafana.png)
-
-![](/arch-img/up.png)
-
-![](/arch-img//Memoria%20cache.png)
-
-![](/arch-img/cache%20img%20max.png)
-
-
-### 14. Interpretar las métricas
-Observa las métricas en el Dashboard de Grafana y utilízalas para tomar decisiones informadas sobre la salud y el rendimiento de tus microservicios.
+**Evidencias:**
+![](/arch-img/vagrantFrontend.PNG)
+![](/arch-img/VMs.PNG)
